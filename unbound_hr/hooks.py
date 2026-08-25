@@ -268,3 +268,10 @@ after_migrate = [
 app_include_js = [
     "/assets/unbound_hr/js/candidate_detail.js",
 ]
+
+doc_events = {
+    "Job Applicant": {
+        "after_insert": "unbound_hr.events.job_applicant.queue_resume_processing",
+        "on_update": "unbound_hr.events.job_applicant.queue_resume_processing",
+    }
+}
