@@ -90,6 +90,12 @@ class UnboundATS {
 
     make_actions() {
         this.page.add_inner_button(
+            __("Process Selected Resumes"),
+            () => this.process_selected_resumes(),
+            __("Actions")
+        );
+
+        this.page.add_inner_button(
             __("Shortlist Selected"),
             () => this.shortlist_selected(),
             __("Actions")
@@ -580,6 +586,63 @@ class UnboundATS {
             .text(
                 __("{0} selected", [this.selected.size])
             );
+    }
+
+
+    async process_selected_resumes() {
+        if (!this.selected.size) {
+            frappe.msgprint(
+                __("Select at least one applicant.")
+            );
+            return;
+        }
+
+        frappe.confirm(
+            __(
+                "Process resumes for {0} selected applicant(s)?",
+                [this.selected.size]
+            ),
+            async () => {
+                const result = await frappe.call({
+                    method:
+                        "unbound_hr.api.ats.process_selected_resumes",
+
+                    args: {
+                        applicants: Array.from(this.selected),
+                    },
+
+                    freeze: true,
+                    freeze_message:
+                        __("Processing resumes and matching job descriptions..."),
+                });
+
+                const response = result.message || {};
+
+                if (response.failed_count) {
+                    frappe.msgprint({
+                        title: __("Resume Processing Complete"),
+                        indicator: "orange",
+                        message: __(
+                            "{0} processed successfully. {1} failed.",
+                            [
+                                response.processed_count || 0,
+                                response.failed_count || 0,
+                            ]
+                        ),
+                    });
+                } else {
+                    frappe.show_alert({
+                        message: __(
+                            "{0} resume(s) processed successfully",
+                            [response.processed_count || 0]
+                        ),
+                        indicator: "green",
+                    });
+                }
+
+                await this.refresh();
+            }
+        );
     }
 
 

@@ -157,6 +157,13 @@ window.UnboundCandidateDetail = {
                 <hr>
 
                 <div class="candidate-detail-actions">
+                    <button
+                        class="btn btn-primary btn-sm"
+                        data-process-resume
+                    >
+                        Process Resume
+                    </button>
+
                     <button class="btn btn-success btn-sm" data-stage="Shortlisted">
                         Shortlist
                     </button>
@@ -171,6 +178,49 @@ window.UnboundCandidateDetail = {
         `;
 
         dialog.fields_dict.candidate_details.$wrapper.html(html);
+
+        dialog.fields_dict.candidate_details.$wrapper
+            .find("[data-process-resume]")
+            .on("click", async () => {
+                try {
+                    const result = await frappe.call({
+                        method: "unbound_hr.api.ats.process_candidate_resume",
+                        args: {
+                            applicant_name: c.name,
+                        },
+                        freeze: true,
+                        freeze_message: __("Processing resume and matching JD..."),
+                    });
+
+                    const response = result.message || {};
+                    const match = response.match || {};
+
+                    frappe.show_alert({
+                        message: __(
+                            "Resume processed. ATS Score: {0}",
+                            [match.ats_score ?? "—"]
+                        ),
+                        indicator: "green",
+                    });
+
+                    dialog.hide();
+
+                    if (
+                        atsPage &&
+                        typeof atsPage.refresh === "function"
+                    ) {
+                        await atsPage.refresh();
+                    }
+                } catch (error) {
+                    console.error(error);
+
+                    frappe.msgprint({
+                        title: __("Resume Processing Failed"),
+                        indicator: "red",
+                        message: __("Unable to process this candidate's resume."),
+                    });
+                }
+            });
 
         dialog.fields_dict.candidate_details.$wrapper
             .find("[data-stage]")

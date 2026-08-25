@@ -649,3 +649,44 @@ def process_candidate_resume(applicant_name):
         frappe.db.commit()
 
         raise
+
+
+@frappe.whitelist()
+def process_selected_resumes(applicants):
+    _ensure_hr_access()
+
+    if isinstance(applicants, str):
+        applicants = frappe.parse_json(applicants)
+
+    if not isinstance(applicants, list) or not applicants:
+        frappe.throw(_("Select at least one applicant."))
+
+    processed = []
+    failed = []
+
+    for applicant_name in applicants:
+        try:
+            result = process_candidate_resume(applicant_name)
+
+            processed.append({
+                "name": applicant_name,
+                "ats_score": result["match"]["ats_score"],
+            })
+
+        except Exception as exc:
+            frappe.log_error(
+                title=f"ATS resume processing failed: {applicant_name}",
+                message=frappe.get_traceback(),
+            )
+
+            failed.append({
+                "name": applicant_name,
+                "error": str(exc),
+            })
+
+    return {
+        "processed": processed,
+        "failed": failed,
+        "processed_count": len(processed),
+        "failed_count": len(failed),
+    }
