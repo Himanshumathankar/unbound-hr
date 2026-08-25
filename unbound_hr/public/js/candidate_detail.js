@@ -177,20 +177,52 @@ window.UnboundCandidateDetail = {
             .on("click", async (event) => {
                 const stage = event.currentTarget.dataset.stage;
 
-                await frappe.call({
-                    method: "unbound_hr.api.ats.bulk_update_stage",
-                    args: {
-                        applicants: [c.name],
-                        stage,
-                    },
-                    freeze: true,
-                    freeze_message: __("Updating candidate..."),
-                });
+                if (stage === "Shortlisted") {
+                    const result = await frappe.call({
+                        method: "unbound_hr.api.ats.shortlist_and_send_email",
+                        args: {
+                            applicants: [c.name],
+                        },
+                        freeze: true,
+                        freeze_message: __("Sending shortlist email..."),
+                    });
 
-                frappe.show_alert({
-                    message: __("Candidate moved to {0}", [stage]),
-                    indicator: "green",
-                });
+                    const response = result.message || {};
+
+                    if (response.failed_count) {
+                        frappe.msgprint({
+                            title: __("Shortlist Email"),
+                            indicator: "orange",
+                            message: __(
+                                "{0} email(s) queued successfully. {1} failed.",
+                                [
+                                    response.sent_count || 0,
+                                    response.failed_count || 0,
+                                ]
+                            ),
+                        });
+                    } else {
+                        frappe.show_alert({
+                            message: __("Candidate shortlisted and email queued"),
+                            indicator: "green",
+                        });
+                    }
+                } else {
+                    await frappe.call({
+                        method: "unbound_hr.api.ats.bulk_update_stage",
+                        args: {
+                            applicants: [c.name],
+                            stage,
+                        },
+                        freeze: true,
+                        freeze_message: __("Updating candidate..."),
+                    });
+
+                    frappe.show_alert({
+                        message: __("Candidate moved to {0}", [stage]),
+                        indicator: "green",
+                    });
+                }
 
                 dialog.hide();
 

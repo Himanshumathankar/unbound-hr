@@ -91,7 +91,7 @@ class UnboundATS {
     make_actions() {
         this.page.add_inner_button(
             __("Shortlist Selected"),
-            () => this.bulk_stage("Shortlisted"),
+            () => this.shortlist_selected(),
             __("Actions")
         );
 
@@ -580,6 +580,63 @@ class UnboundATS {
             .text(
                 __("{0} selected", [this.selected.size])
             );
+    }
+
+
+    async shortlist_selected() {
+        if (!this.selected.size) {
+            frappe.msgprint(
+                __("Select at least one applicant.")
+            );
+            return;
+        }
+
+        frappe.confirm(
+            __(
+                "Shortlist {0} applicant(s) and send the selection email?",
+                [this.selected.size]
+            ),
+            async () => {
+                const result = await frappe.call({
+                    method:
+                        "unbound_hr.api.ats.shortlist_and_send_email",
+
+                    args: {
+                        applicants: Array.from(this.selected),
+                    },
+
+                    freeze: true,
+                    freeze_message:
+                        __("Sending shortlist emails..."),
+                });
+
+                const response = result.message || {};
+
+                if (response.failed_count) {
+                    frappe.msgprint({
+                        title: __("Shortlisting Complete"),
+                        indicator: "orange",
+                        message: __(
+                            "{0} email(s) queued. {1} failed.",
+                            [
+                                response.sent_count || 0,
+                                response.failed_count || 0,
+                            ]
+                        ),
+                    });
+                } else {
+                    frappe.show_alert({
+                        message: __(
+                            "{0} candidate(s) shortlisted",
+                            [response.sent_count || 0]
+                        ),
+                        indicator: "green",
+                    });
+                }
+
+                await this.refresh();
+            }
+        );
     }
 
 

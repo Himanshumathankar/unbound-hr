@@ -314,3 +314,338 @@ def get_candidate_details(applicant_name):
         "creation": applicant.creation,
         "modified": applicant.modified,
     }
+
+
+@frappe.whitelist()
+def shortlist_and_send_email(applicants):
+    _ensure_hr_access()
+
+    if isinstance(applicants, str):
+        applicants = frappe.parse_json(applicants)
+
+    if not isinstance(applicants, list) or not applicants:
+        frappe.throw(_("Select at least one applicant."))
+
+    sent = []
+    failed = []
+
+    for applicant_name in applicants:
+        try:
+            if not frappe.has_permission(
+                "Job Applicant",
+                "write",
+                doc=applicant_name,
+            ):
+                raise frappe.PermissionError(
+                    _("You cannot update Job Applicant {0}.").format(
+                        applicant_name
+                    )
+                )
+
+            applicant = frappe.get_doc(
+                "Job Applicant",
+                applicant_name,
+            )
+
+            candidate_name = (
+                applicant.applicant_name
+                or applicant.name
+            )
+
+            candidate_email = applicant.email_id
+
+            if not candidate_email:
+                raise frappe.ValidationError(
+                    _("Candidate does not have an email address.")
+                )
+
+            opening_id = applicant.job_title
+
+            opening_title = opening_id
+
+            if opening_id:
+                opening_title = (
+                    frappe.db.get_value(
+                        "Job Opening",
+                        opening_id,
+                        "job_title",
+                    )
+                    or opening_id
+                )
+
+            # Mark shortlisted first.
+            frappe.db.set_value(
+                "Job Applicant",
+                applicant.name,
+                {
+                    "custom_ats_stage": "Shortlisted",
+                    "custom_shortlisted_on": now_datetime(),
+                },
+                update_modified=True,
+            )
+
+            subject = _(
+                "You've been shortlisted for {0}"
+            ).format(opening_title)
+
+            message = f"""
+                <p>Hi {frappe.utils.escape_html(candidate_name)},</p>
+
+                <p>
+                    Thank you for applying for the
+                    <strong>{frappe.utils.escape_html(opening_title)}</strong>
+                    position.
+                </p>
+
+                <p>
+                    We are pleased to inform you that your profile
+                    has been shortlisted for the next stage of our
+                    recruitment process.
+                </p>
+
+                <p>
+                    Our HR team will contact you shortly to coordinate
+                    the interview date and time.
+                </p>
+
+                <p>
+                    Regards,<br>
+                    Let's Unbound Recruitment Team
+                </p>
+            """
+
+            frappe.sendmail(
+                recipients=[candidate_email],
+                subject=subject,
+                message=message,
+                reference_doctype="Job Applicant",
+                reference_name=applicant.name,
+                now=False,
+            )
+
+            # Email successfully queued.
+            frappe.db.set_value(
+                "Job Applicant",
+                applicant.name,
+                "custom_ats_stage",
+                "Selection Mail Sent",
+                update_modified=True,
+            )
+
+            sent.append(
+                {
+                    "name": applicant.name,
+                    "applicant_name": candidate_name,
+                    "email": candidate_email,
+                }
+            )
+
+        except Exception as exc:
+            frappe.log_error(
+                title=f"ATS shortlist email failed: {applicant_name}",
+                message=frappe.get_traceback(),
+            )
+
+            failed.append(
+                {
+                    "name": applicant_name,
+                    "error": str(exc),
+                }
+            )
+
+    frappe.db.commit()
+
+    return {
+        "sent": sent,
+        "failed": failed,
+        "sent_count": len(sent),
+        "failed_count": len(failed),
+    }
+
+
+@frappe.whitelist()
+def process_candidate_resume(applicant_name):
+    _ensure_hr_access()
+
+    if not frappe.has_permission(
+        "Job Applicant",
+        "write",
+        doc=applicant_name,
+    ):
+        frappe.throw(
+            _("You do not have permission to process this applicant."),
+            frappe.PermissionError,
+        )
+
+    from unbound_hr.services.jd_matching import calculate_match
+    from unbound_hr.services.resume_processing import (
+        extract_text_from_attachment,
+        parse_resume,
+    )
+
+    applicant = frappe.get_doc(
+        "Job Applicant",
+        applicant_name,
+    )
+
+    frappe.db.set_value(
+        "Job Applicant",
+        applicant.name,
+        {
+            "custom_processing_status": "Processing",
+            "custom_ats_stage": "Processing",
+        },
+        update_modified=True,
+    )
+
+    resume_url = (
+        getattr(applicant, "resume_attachment", None)
+        or getattr(applicant, "resume_link", None)
+    )
+
+    if not resume_url:
+        frappe.throw(
+            _("No resume attachment found for this candidate.")
+        )
+
+    opening_id = applicant.job_title
+
+    if not opening_id:
+        frappe.throw(
+            _("Candidate is not linked to a Job Opening.")
+        )
+
+    opening = frappe.get_doc(
+        "Job Opening",
+        opening_id,
+    )
+
+    jd_text = (
+        getattr(opening, "description", None)
+        or getattr(opening, "job_description", None)
+        or ""
+    )
+
+    if not jd_text:
+        frappe.throw(
+            _("Job Opening does not contain a job description.")
+        )
+
+    try:
+        resume_text = extract_text_from_attachment(
+            resume_url
+        )
+
+        candidate = parse_resume(
+            resume_text
+        )
+
+        match = calculate_match(
+            candidate,
+            jd_text,
+        )
+
+        matched_skills = match["skills"]["matched"]
+        missing_skills = match["skills"]["missing"]
+
+        strengths = []
+
+        if matched_skills:
+            strengths.append(
+                "Matched skills: "
+                + ", ".join(matched_skills)
+            )
+
+        if (
+            match["experience"]["score"]
+            >= 100
+        ):
+            strengths.append(
+                "Meets or exceeds the required experience."
+            )
+
+        if (
+            match["education"]["score"]
+            >= 100
+        ):
+            strengths.append(
+                "Meets the education requirement."
+            )
+
+        concerns = []
+
+        if missing_skills:
+            concerns.append(
+                "Missing or unverified skills: "
+                + ", ".join(missing_skills)
+            )
+
+        if (
+            match["experience"]["score"]
+            < 100
+            and match["experience"]["required_years"] > 0
+        ):
+            concerns.append(
+                "Resume indicates "
+                f'{match["experience"]["candidate_years"]} years '
+                "of experience against "
+                f'{match["experience"]["required_years"]} required.'
+            )
+
+        ai_summary = (
+            f"Candidate matched {len(matched_skills)} "
+            f"of {len(match['skills']['jd_skills'])} "
+            f"identified JD skills. "
+            f"Detected experience: "
+            f"{candidate['years_experience']} years. "
+            f"Overall ATS score: {match['ats_score']}."
+        )
+
+        frappe.db.set_value(
+            "Job Applicant",
+            applicant.name,
+            {
+                "custom_ats_score":
+                    match["ats_score"],
+                "custom_skills_match":
+                    match["skills"]["score"],
+                "custom_experience_match":
+                    match["experience"]["score"],
+                "custom_education_match":
+                    match["education"]["score"],
+                "custom_ai_summary":
+                    ai_summary,
+                "custom_strengths":
+                    "\n".join(strengths),
+                "custom_concerns":
+                    "\n".join(concerns),
+                "custom_processing_status":
+                    "Completed",
+                "custom_screening_status":
+                    "AI Reviewed",
+                "custom_ats_stage":
+                    "HR Review",
+            },
+            update_modified=True,
+        )
+
+        frappe.db.commit()
+
+        return {
+            "applicant": applicant.name,
+            "candidate": candidate,
+            "match": match,
+        }
+
+    except Exception:
+        frappe.db.set_value(
+            "Job Applicant",
+            applicant.name,
+            "custom_processing_status",
+            "Failed",
+            update_modified=True,
+        )
+
+        frappe.db.commit()
+
+        raise
