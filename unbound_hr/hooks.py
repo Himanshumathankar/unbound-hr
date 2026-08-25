@@ -256,3 +256,11 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+
+after_install = [
+    "unbound_hr.setup.ats_fields.create_ats_custom_fields",
+]
+
+after_migrate = [
+    "unbound_hr.setup.ats_fields.create_ats_custom_fields",
+]
