@@ -275,3 +275,10 @@ doc_events = {
         "on_update": "unbound_hr.events.job_applicant.queue_resume_processing",
     }
 }
+
+website_route_rules = [
+    {
+        "from_route": "/apply/<path:job_opening>",
+        "to_route": "apply",
+    }
+]
