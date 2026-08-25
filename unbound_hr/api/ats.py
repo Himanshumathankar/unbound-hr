@@ -158,6 +158,18 @@ def get_applicants(
         limit_page_length=limit_page_length,
     )
 
+    for row in applicants:
+        opening_id = row.get("job_title")
+
+        if opening_id:
+            row["job_opening_name"] = frappe.db.get_value(
+                "Job Opening",
+                opening_id,
+                "job_title",
+            ) or opening_id
+        else:
+            row["job_opening_name"] = ""
+
     count = frappe.db.count(
         "Job Applicant",
         filters=filters,
@@ -240,4 +252,65 @@ def bulk_update_stage(applicants, stage):
     return {
         "updated": updated,
         "stage": stage,
+    }
+
+
+@frappe.whitelist()
+def get_candidate_details(applicant_name):
+    _ensure_hr_access()
+
+    if not applicant_name:
+        frappe.throw(_("Job Applicant is required."))
+
+    if not frappe.has_permission(
+        "Job Applicant",
+        "read",
+        doc=applicant_name,
+    ):
+        frappe.throw(
+            _("You do not have permission to view this applicant."),
+            frappe.PermissionError,
+        )
+
+    applicant = frappe.get_doc("Job Applicant", applicant_name)
+
+    meta = frappe.get_meta("Job Applicant")
+    available = {df.fieldname for df in meta.fields}
+
+    def get(fieldname, default=None):
+        if fieldname in available:
+            return getattr(applicant, fieldname, default)
+        return default
+
+    resume = None
+
+    if "resume_attachment" in available:
+        resume = get("resume_attachment")
+    elif "resume_link" in available:
+        resume = get("resume_link")
+
+    return {
+        "name": applicant.name,
+        "applicant_name": get("applicant_name") or applicant.name,
+        "email_id": get("email_id"),
+        "phone_number": get("phone_number"),
+        "job_opening": get("job_opening") or get("job_title"),
+        "designation": get("designation"),
+        "source": get("source"),
+        "source_type": get("custom_source_type"),
+        "status": get("status"),
+        "ats_stage": get("custom_ats_stage") or "New Applicant",
+        "processing_status": get("custom_processing_status"),
+        "screening_status": get("custom_screening_status"),
+        "ats_score": get("custom_ats_score"),
+        "skills_match": get("custom_skills_match"),
+        "experience_match": get("custom_experience_match"),
+        "education_match": get("custom_education_match"),
+        "ai_summary": get("custom_ai_summary"),
+        "strengths": get("custom_strengths"),
+        "concerns": get("custom_concerns"),
+        "recruiter_notes": get("custom_recruiter_notes"),
+        "resume": resume,
+        "creation": applicant.creation,
+        "modified": applicant.modified,
     }

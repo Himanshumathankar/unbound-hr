@@ -264,3 +264,7 @@ after_install = [
 after_migrate = [
     "unbound_hr.setup.ats_fields.create_ats_custom_fields",
 ]
+
+app_include_js = [
+    "/assets/unbound_hr/js/candidate_detail.js",
+]

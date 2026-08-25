@@ -145,6 +145,7 @@ class UnboundATS {
                                 </th>
 
                                 <th>Candidate</th>
+                                <th>Job Opening</th>
                                 <th>Source</th>
                                 <th>ATS Score</th>
                                 <th>Skills</th>
@@ -156,7 +157,7 @@ class UnboundATS {
 
                         <tbody data-applicant-rows>
                             <tr>
-                                <td colspan="8" class="text-muted text-center">
+                                <td colspan="9" class="text-muted text-center">
                                     Select a Job Opening
                                 </td>
                             </tr>
@@ -293,6 +294,56 @@ class UnboundATS {
                 font-size: 12px;
                 white-space: nowrap;
             }
+
+            .unbound-candidate-detail {
+                padding: 8px 4px;
+            }
+
+            .candidate-detail-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 24px;
+            }
+
+            .candidate-detail-header h3 {
+                margin-top: 0;
+                margin-bottom: 6px;
+            }
+
+            .candidate-score-box {
+                min-width: 120px;
+                text-align: center;
+                border: 1px solid var(--border-color);
+                border-radius: 10px;
+                padding: 14px;
+            }
+
+            .candidate-score-label {
+                font-size: 11px;
+                color: var(--text-muted);
+            }
+
+            .candidate-score-value {
+                font-size: 30px;
+                font-weight: 700;
+            }
+
+            .candidate-metric {
+                font-size: 22px;
+                font-weight: 600;
+                margin-top: 5px;
+            }
+
+            .candidate-section {
+                margin-top: 18px;
+            }
+
+            .candidate-detail-actions {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
         `;
 
         document.head.appendChild(style);
@@ -370,7 +421,7 @@ class UnboundATS {
             .find("[data-applicant-rows]")
             .html(`
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="9" class="text-center text-muted">
                         Loading applicants...
                     </td>
                 </tr>
@@ -389,7 +440,7 @@ class UnboundATS {
             .find("[data-applicant-rows]")
             .html(`
                 <tr>
-                    <td colspan="8" class="text-center text-muted">
+                    <td colspan="9" class="text-center text-muted">
                         ${frappe.utils.escape_html(message)}
                     </td>
                 </tr>
@@ -458,6 +509,12 @@ class UnboundATS {
 
                     <td>
                         ${frappe.utils.escape_html(
+                            row.job_opening_name || row.job_title || "—"
+                        )}
+                    </td>
+
+                    <td>
+                        ${frappe.utils.escape_html(
                             row.source || row.custom_source_type || "—"
                         )}
                     </td>
@@ -505,14 +562,13 @@ class UnboundATS {
 
         tbody
             .find("[data-open-applicant]")
-            .on("click", (event) => {
+            .on("click", async (event) => {
                 const name =
                     event.currentTarget.dataset.openApplicant;
 
-                frappe.set_route(
-                    "Form",
-                    "Job Applicant",
-                    name
+                await window.UnboundCandidateDetail.show(
+                    name,
+                    this
                 );
             });
     }
