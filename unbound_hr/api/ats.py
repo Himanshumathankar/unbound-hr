@@ -70,7 +70,10 @@ def get_applicants(
     search=None,
     ats_stage=None,
     source=None,
+    source_type=None,
     processing_status=None,
+    screening_status=None,
+    min_score=None,
     sort="score_desc",
     limit_start=0,
     limit_page_length=100,
@@ -99,8 +102,23 @@ def get_applicants(
     if source:
         filters["source"] = source
 
+    if source_type:
+        filters["custom_source_type"] = source_type
+
     if processing_status:
         filters["custom_processing_status"] = processing_status
+
+    if screening_status:
+        filters["custom_screening_status"] = screening_status
+
+    if min_score not in (None, ""):
+        try:
+            min_score = float(min_score)
+        except (TypeError, ValueError):
+            frappe.throw(_("Minimum ATS Score must be a number."))
+
+        min_score = max(0.0, min(100.0, min_score))
+        filters["custom_ats_score"] = [">=", min_score]
 
     meta = frappe.get_meta("Job Applicant")
     available = {df.fieldname for df in meta.fields}
@@ -170,14 +188,17 @@ def get_applicants(
         else:
             row["job_opening_name"] = ""
 
-    count = frappe.db.count(
+    count_rows = frappe.get_all(
         "Job Applicant",
+        fields=["name"],
         filters=filters,
+        or_filters=or_filters or None,
+        limit_page_length=5000,
     )
 
     return {
         "applicants": applicants,
-        "count": count,
+        "count": len(count_rows),
     }
 
 

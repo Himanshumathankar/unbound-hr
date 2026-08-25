@@ -72,6 +72,43 @@ class UnboundATS {
             change: () => this.refresh(),
         });
 
+        this.screening = this.page.add_field({
+            label: __("Screening"),
+            fieldtype: "Select",
+            fieldname: "screening_status",
+            options: [
+                "",
+                "Pending",
+                "AI Reviewed",
+                "HR Reviewed",
+                "Needs Review",
+            ].join("\n"),
+            change: () => this.refresh(),
+        });
+
+        this.source_type = this.page.add_field({
+            label: __("Source Type"),
+            fieldtype: "Select",
+            fieldname: "source_type",
+            options: [
+                "",
+                "Inbound",
+                "Outbound",
+                "Referral",
+                "Internal",
+                "Other",
+            ].join("\n"),
+            change: () => this.refresh(),
+        });
+
+        this.min_score = this.page.add_field({
+            label: __("Min ATS Score"),
+            fieldtype: "Float",
+            fieldname: "min_score",
+            default: 0,
+            change: () => this.refresh(),
+        });
+
         this.sort = this.page.add_field({
             label: __("Sort"),
             fieldtype: "Select",
@@ -398,7 +435,10 @@ class UnboundATS {
                     job_opening,
                     search: this.search_input.val() || "",
                     ats_stage: this.stage.get_value() || "",
+                    source_type: this.source_type.get_value() || "",
                     processing_status: this.processing.get_value() || "",
+                    screening_status: this.screening.get_value() || "",
+                    min_score: this.min_score.get_value() || 0,
                     sort: this.sort.get_value() || "score_desc",
                 },
             });
