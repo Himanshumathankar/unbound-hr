@@ -16,6 +16,11 @@ class UnboundATS {
         this.applicants = [];
 
         this.make_filters();
+
+        // Frappe keeps custom page fields inside the page form area.
+        // Explicitly show it so ATS filters are visible.
+        this.page.show_form();
+
         this.make_layout();
         this.make_actions();
 
@@ -24,104 +29,148 @@ class UnboundATS {
 
 
     make_filters() {
-        this.job_opening = this.page.add_field({
-            label: __("Job Opening"),
-            fieldtype: "Select",
-            fieldname: "job_opening",
-            options: [""],
-            change: () => this.refresh(),
-        });
+        // Controls are created after make_layout().
+        // This method intentionally does nothing.
+    }
 
-        this.stage = this.page.add_field({
-            label: __("ATS Stage"),
-            fieldtype: "Select",
-            fieldname: "ats_stage",
-            options: [
-                "",
-                "New Applicant",
-                "Processing",
-                "Screening",
-                "HR Review",
-                "Shortlisted",
-                "Selection Mail Sent",
-                "Interview Scheduled",
-                "Interview Round 1",
-                "Interview Round 2",
-                "Final Review",
-                "Selected",
-                "Offer Sent",
-                "Joined",
-                "Rejected",
-                "On Hold",
-            ].join("\n"),
-            change: () => this.refresh(),
-        });
 
-        this.processing = this.page.add_field({
-            label: __("Processing"),
-            fieldtype: "Select",
-            fieldname: "processing_status",
-            options: [
-                "",
-                "Not Processed",
-                "Queued",
-                "Processing",
-                "Completed",
-                "Failed",
-            ].join("\n"),
-            change: () => this.refresh(),
-        });
+    make_filter_controls() {
+        const make_control = (selector, df) => {
+            const parent = this.page.main
+                .find(selector)
+                .get(0);
 
-        this.screening = this.page.add_field({
-            label: __("Screening"),
-            fieldtype: "Select",
-            fieldname: "screening_status",
-            options: [
-                "",
-                "Pending",
-                "AI Reviewed",
-                "HR Reviewed",
-                "Needs Review",
-            ].join("\n"),
-            change: () => this.refresh(),
-        });
+            const control = frappe.ui.form.make_control({
+                parent,
+                df,
+                render_input: true,
+            });
 
-        this.source_type = this.page.add_field({
-            label: __("Source Type"),
-            fieldtype: "Select",
-            fieldname: "source_type",
-            options: [
-                "",
-                "Inbound",
-                "Outbound",
-                "Referral",
-                "Internal",
-                "Other",
-            ].join("\n"),
-            change: () => this.refresh(),
-        });
+            control.refresh();
 
-        this.min_score = this.page.add_field({
-            label: __("Min ATS Score"),
-            fieldtype: "Float",
-            fieldname: "min_score",
-            default: 0,
-            change: () => this.refresh(),
-        });
+            return control;
+        };
 
-        this.sort = this.page.add_field({
-            label: __("Sort"),
-            fieldtype: "Select",
-            fieldname: "sort",
-            options: [
-                { label: __("ATS Score: High to Low"), value: "score_desc" },
-                { label: __("ATS Score: Low to High"), value: "score_asc" },
-                { label: __("Newest"), value: "newest" },
-                { label: __("Oldest"), value: "oldest" },
-            ],
-            default: "score_desc",
-            change: () => this.refresh(),
-        });
+        this.job_opening = make_control(
+            "[data-filter-job-opening]",
+            {
+                label: __("Job Opening"),
+                fieldtype: "Select",
+                fieldname: "job_opening",
+                options: [""],
+                onchange: () => this.refresh(),
+            }
+        );
+
+        this.stage = make_control(
+            "[data-filter-stage]",
+            {
+                label: __("ATS Stage"),
+                fieldtype: "Select",
+                fieldname: "ats_stage",
+                options: [
+                    "",
+                    "New Applicant",
+                    "Processing",
+                    "Screening",
+                    "HR Review",
+                    "Shortlisted",
+                    "Selection Mail Sent",
+                    "Interview Scheduled",
+                    "Interview Round 1",
+                    "Interview Round 2",
+                    "Final Review",
+                    "Selected",
+                    "Offer Sent",
+                    "Joined",
+                    "Rejected",
+                    "On Hold",
+                ].join("\n"),
+                onchange: () => this.refresh(),
+            }
+        );
+
+        this.processing = make_control(
+            "[data-filter-processing]",
+            {
+                label: __("Processing"),
+                fieldtype: "Select",
+                fieldname: "processing_status",
+                options: [
+                    "",
+                    "Not Processed",
+                    "Queued",
+                    "Processing",
+                    "Completed",
+                    "Failed",
+                ].join("\n"),
+                onchange: () => this.refresh(),
+            }
+        );
+
+        this.screening = make_control(
+            "[data-filter-screening]",
+            {
+                label: __("Screening"),
+                fieldtype: "Select",
+                fieldname: "screening_status",
+                options: [
+                    "",
+                    "Pending",
+                    "AI Reviewed",
+                    "HR Reviewed",
+                    "Needs Review",
+                ].join("\n"),
+                onchange: () => this.refresh(),
+            }
+        );
+
+        this.source_type = make_control(
+            "[data-filter-source-type]",
+            {
+                label: __("Source Type"),
+                fieldtype: "Select",
+                fieldname: "source_type",
+                options: [
+                    "",
+                    "Inbound",
+                    "Outbound",
+                    "Referral",
+                    "Internal",
+                    "Other",
+                ].join("\n"),
+                onchange: () => this.refresh(),
+            }
+        );
+
+        this.min_score = make_control(
+            "[data-filter-min-score]",
+            {
+                label: __("Min ATS Score"),
+                fieldtype: "Float",
+                fieldname: "min_score",
+                default: 0,
+                onchange: () => this.refresh(),
+            }
+        );
+
+        this.sort = make_control(
+            "[data-filter-sort]",
+            {
+                label: __("Sort"),
+                fieldtype: "Select",
+                fieldname: "sort",
+                options: [
+                    "",
+                    "score_desc",
+                    "score_asc",
+                    "newest",
+                    "oldest",
+                ].join("\n"),
+                default: "score_desc",
+                onchange: () => this.refresh(),
+            }
+        );
     }
 
 
@@ -160,6 +209,19 @@ class UnboundATS {
     make_layout() {
         this.page.main.html(`
             <div class="unbound-ats">
+
+                <div class="ats-filter-panel">
+                    <div class="ats-filter-grid">
+                        <div data-filter-job-opening></div>
+                        <div data-filter-stage></div>
+                        <div data-filter-processing></div>
+                        <div data-filter-screening></div>
+                        <div data-filter-source-type></div>
+                        <div data-filter-min-score></div>
+                        <div data-filter-sort></div>
+                    </div>
+                </div>
+
                 <div class="ats-summary">
                     <div>
                         <div class="ats-label">Applicants</div>
@@ -259,6 +321,26 @@ class UnboundATS {
         style.innerHTML = `
             .unbound-ats {
                 padding: 18px 0;
+            }
+
+            .ats-filter-panel {
+                margin-bottom: 16px;
+                padding: 16px;
+                border: 1px solid var(--border-color);
+                border-radius: 12px;
+                background: var(--card-bg);
+            }
+
+            .ats-filter-grid {
+                display: grid;
+                grid-template-columns:
+                    repeat(auto-fit, minmax(180px, 1fr));
+                gap: 12px 16px;
+                align-items: end;
+            }
+
+            .ats-filter-grid .form-group {
+                margin-bottom: 0;
             }
 
             .ats-summary {
