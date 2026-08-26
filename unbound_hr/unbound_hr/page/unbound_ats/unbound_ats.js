@@ -26,9 +26,9 @@ class UnboundATS {
     make_filters() {
         this.job_opening = this.page.add_field({
             label: __("Job Opening"),
-            fieldtype: "Link",
-            options: "Job Opening",
+            fieldtype: "Select",
             fieldname: "job_opening",
+            options: [""],
             change: () => this.refresh(),
         });
 
@@ -401,12 +401,47 @@ class UnboundATS {
 
             const openings = result.message || [];
 
+            this.job_openings = openings;
+
+            const options = [
+                "",
+                ...openings.map((opening) => {
+                    const parts = [
+                        opening.job_title || opening.name,
+                        opening.department || "",
+                        opening.name,
+                    ].filter(Boolean);
+
+                    return {
+                        label: parts.join(" — "),
+                        value: opening.name,
+                    };
+                }),
+            ];
+
+            this.job_opening.df.options = options;
+            this.job_opening.refresh();
+
             if (openings.length === 1) {
-                this.job_opening.set_value(openings[0].name);
+                await this.job_opening.set_value(
+                    openings[0].name
+                );
+
                 await this.refresh();
+            } else {
+                this.render_empty(
+                    __("Select a Job Opening to view applicants.")
+                );
             }
         } catch (error) {
-            console.error(error);
+            console.error(
+                "Unable to load Job Openings",
+                error
+            );
+
+            this.render_empty(
+                __("Unable to load Job Openings.")
+            );
         }
     }
 
