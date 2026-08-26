@@ -47,15 +47,32 @@ class UnboundATS {
             return control;
         };
 
-        this.job_opening = make_control(
-            "[data-filter-job-opening]",
-            {
-                label: __("Job Opening"),
-                fieldtype: "Select",
-                fieldname: "job_opening",
-                options: [""],
-                onchange: () => this.refresh(),
-            }
+        const jobOpeningWrapper = this.page.main
+            .find("[data-filter-job-opening]");
+
+        jobOpeningWrapper.html(`
+            <div class="form-group">
+                <label class="control-label">
+                    ${__("Job Opening")}
+                </label>
+
+                <select
+                    class="form-control"
+                    data-job-opening-select
+                >
+                    <option value="">
+                        ${__("Select Job Opening")}
+                    </option>
+                </select>
+            </div>
+        `);
+
+        this.job_opening_select = jobOpeningWrapper
+            .find("[data-job-opening-select]");
+
+        this.job_opening_select.on(
+            "change",
+            () => this.refresh()
         );
 
         this.stage = make_control(
@@ -481,36 +498,37 @@ class UnboundATS {
 
             this.job_openings = openings;
 
-            const options = [
-                "",
-                ...openings.map((opening) => {
-                    const parts = [
-                        opening.job_title || opening.name,
-                        opening.department || "",
-                        opening.name,
-                    ].filter(Boolean);
+            const select = this.job_opening_select;
 
-                    return {
-                        label: parts.join(" — "),
+            select.empty();
+
+            select.append(
+                $("<option>", {
+                    value: "",
+                    text: __("Select Job Opening"),
+                })
+            );
+
+            openings.forEach((opening) => {
+                const parts = [
+                    opening.job_title || opening.name,
+                    opening.department || "",
+                    opening.status || "",
+                    opening.name,
+                ].filter(Boolean);
+
+                select.append(
+                    $("<option>", {
                         value: opening.name,
-                    };
-                }),
-            ];
-
-            this.job_opening.df.options = options;
-            this.job_opening.refresh();
-
-            if (openings.length === 1) {
-                await this.job_opening.set_value(
-                    openings[0].name
+                        text: parts.join(" — "),
+                    })
                 );
+            });
 
-                await this.refresh();
-            } else {
-                this.render_empty(
-                    __("Select a Job Opening to view applicants.")
-                );
-            }
+            this.render_empty(
+                __("Select a Job Opening to view applicants.")
+            );
+
         } catch (error) {
             console.error(
                 "Unable to load Job Openings",
@@ -525,7 +543,8 @@ class UnboundATS {
 
 
     async refresh() {
-        const job_opening = this.job_opening.get_value();
+        const job_opening =
+            this.job_opening_select?.val() || "";
 
         if (!job_opening) {
             this.render_empty(

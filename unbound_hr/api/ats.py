@@ -50,15 +50,11 @@ def get_job_openings():
         if field == "name" or field in available_fields
     ]
 
-    filters = {}
-
-    if "status" in available_fields:
-        filters["status"] = "Open"
-
+    # ATS must show both active and historical Job Openings.
+    # Recruiters still need access to applicants after an opening closes.
     return frappe.get_all(
         "Job Opening",
         fields=fields,
-        filters=filters,
         order_by="modified desc",
         limit_page_length=500,
     )
