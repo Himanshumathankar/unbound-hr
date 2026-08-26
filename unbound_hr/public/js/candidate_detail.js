@@ -167,6 +167,14 @@ window.UnboundCandidateDetail = {
                     <button class="btn btn-success btn-sm" data-stage="Shortlisted">
                         Shortlist
                     </button>
+
+                    <button
+                        class="btn btn-primary btn-sm"
+                        data-schedule-interview
+                    >
+                        Schedule Interview
+                    </button>
+
                     <button class="btn btn-default btn-sm" data-stage="On Hold">
                         Hold
                     </button>
@@ -221,6 +229,250 @@ window.UnboundCandidateDetail = {
                     });
                 }
             });
+
+        dialog.fields_dict.candidate_details.$wrapper
+            .find("[data-schedule-interview]")
+            .on("click", async () => {
+                try {
+                    const planResult = await frappe.call({
+                        method: "unbound_hr.api.interviews.get_interview_plan",
+                        args: {
+                            applicant_name: c.name,
+                        },
+                        freeze: true,
+                        freeze_message: __("Loading interview plan..."),
+                    });
+
+                    const plan = planResult.message || {};
+
+                    if (!plan.interview_type) {
+                        frappe.msgprint({
+                            title: __("Interview Rounds Complete"),
+                            indicator: "blue",
+                            message:
+                                plan.message ||
+                                __("Required interview rounds are complete."),
+                        });
+
+                        return;
+                    }
+
+                    const interviewerNames = (
+                        plan.interviewers || []
+                    ).join(", ");
+
+                    const scheduleDialog = new frappe.ui.Dialog({
+                        title: __("Schedule Interview"),
+                        fields: [
+                            {
+                                fieldtype: "HTML",
+                                fieldname: "candidate_summary",
+                                options: `
+                                    <div style="
+                                        padding: 12px 14px;
+                                        margin-bottom: 12px;
+                                        border: 1px solid var(--border-color);
+                                        border-radius: 10px;
+                                        background: var(--card-bg);
+                                    ">
+                                        <div>
+                                            <strong>${frappe.utils.escape_html(
+                                                plan.applicant_name || c.applicant_name || c.name
+                                            )}</strong>
+                                        </div>
+
+                                        <div class="text-muted">
+                                            ${frappe.utils.escape_html(
+                                                plan.designation || c.designation || ""
+                                            )}
+                                        </div>
+
+                                        <div style="margin-top: 8px;">
+                                            <strong>${__("Interview Type")}:</strong>
+                                            ${frappe.utils.escape_html(
+                                                plan.interview_type
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <strong>${__("Interviewer")}:</strong>
+                                            ${frappe.utils.escape_html(
+                                                interviewerNames
+                                            )}
+                                        </div>
+                                    </div>
+                                `,
+                            },
+                            {
+                                label: __("Scheduled On"),
+                                fieldname: "scheduled_on",
+                                fieldtype: "Date",
+                                reqd: 1,
+                                default: frappe.datetime.get_today(),
+                            },
+                            {
+                                fieldtype: "Column Break",
+                            },
+                            {
+                                label: __("Start Time"),
+                                fieldname: "from_time",
+                                fieldtype: "Time",
+                                reqd: 1,
+                            },
+                            {
+                                label: __("End Time"),
+                                fieldname: "to_time",
+                                fieldtype: "Time",
+                                reqd: 1,
+                            },
+                            {
+                                fieldtype: "Section Break",
+                            },
+                            {
+                                fieldtype: "HTML",
+                                fieldname: "availability_result",
+                            },
+                        ],
+                        primary_action_label: __("Schedule Interview"),
+                        primary_action: async (values) => {
+                            try {
+                                const check = await frappe.call({
+                                    method:
+                                        "unbound_hr.api.interviews.check_interviewer_availability",
+                                    args: {
+                                        scheduled_on: values.scheduled_on,
+                                        from_time: values.from_time,
+                                        to_time: values.to_time,
+                                        interviewers: plan.interviewers,
+                                    },
+                                    freeze: true,
+                                    freeze_message: __(
+                                        "Checking interviewer availability..."
+                                    ),
+                                });
+
+                                const availability =
+                                    check.message || {};
+
+                                if (!availability.available) {
+                                    const conflicts =
+                                        availability.conflicts || [];
+
+                                    const rows = conflicts
+                                        .map((item) => {
+                                            return `
+                                                <div style="margin-bottom: 8px;">
+                                                    <strong>
+                                                        ${frappe.utils.escape_html(
+                                                            item.interviewer || ""
+                                                        )}
+                                                    </strong><br>
+                                                    ${frappe.utils.escape_html(
+                                                        item.name || ""
+                                                    )}
+                                                    —
+                                                    ${frappe.utils.escape_html(
+                                                        String(item.from_time || "")
+                                                    )}
+                                                    to
+                                                    ${frappe.utils.escape_html(
+                                                        String(item.to_time || "")
+                                                    )}
+                                                </div>
+                                            `;
+                                        })
+                                        .join("");
+
+                                    scheduleDialog
+                                        .get_field("availability_result")
+                                        .$wrapper.html(`
+                                            <div class="alert alert-warning">
+                                                <strong>
+                                                    ${__("Interviewer conflict found")}
+                                                </strong>
+                                                <div style="margin-top: 8px;">
+                                                    ${rows}
+                                                </div>
+                                            </div>
+                                        `);
+
+                                    return;
+                                }
+
+                                const result = await frappe.call({
+                                    method:
+                                        "unbound_hr.api.interviews.schedule_interview",
+                                    args: {
+                                        applicant_name: c.name,
+                                        interview_type:
+                                            plan.interview_type,
+                                        interviewers:
+                                            plan.interviewers,
+                                        scheduled_on:
+                                            values.scheduled_on,
+                                        from_time:
+                                            values.from_time,
+                                        to_time:
+                                            values.to_time,
+                                    },
+                                    freeze: true,
+                                    freeze_message: __(
+                                        "Scheduling interview..."
+                                    ),
+                                });
+
+                                const response =
+                                    result.message || {};
+
+                                scheduleDialog.hide();
+                                dialog.hide();
+
+                                frappe.show_alert({
+                                    message: __(
+                                        "Interview {0} scheduled successfully",
+                                        [
+                                            response.interview ||
+                                            "",
+                                        ]
+                                    ),
+                                    indicator: "green",
+                                });
+
+                                if (
+                                    atsPage &&
+                                    typeof atsPage.refresh ===
+                                        "function"
+                                ) {
+                                    await atsPage.refresh();
+                                }
+                            } catch (error) {
+                                console.error(error);
+
+                                frappe.msgprint({
+                                    title: __("Interview Scheduling Failed"),
+                                    indicator: "red",
+                                    message:
+                                        error?.message ||
+                                        __("Unable to schedule interview."),
+                                });
+                            }
+                        },
+                    });
+
+                    scheduleDialog.show();
+                } catch (error) {
+                    console.error(error);
+
+                    frappe.msgprint({
+                        title: __("Interview Plan Failed"),
+                        indicator: "red",
+                        message:
+                            error?.message ||
+                            __("Unable to load the interview plan."),
+                    });
+                }
+            });
+
 
         dialog.fields_dict.candidate_details.$wrapper
             .find("[data-stage]")
