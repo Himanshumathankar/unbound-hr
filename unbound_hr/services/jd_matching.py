@@ -79,7 +79,7 @@ def score_experience(candidate_years, jd_text):
 
     if required <= 0:
         return {
-            "score": 0.0,
+            "score": 100.0,
             "candidate_years": candidate_years,
             "required_years": 0.0,
         }

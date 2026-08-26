@@ -128,24 +128,52 @@ def extract_skills(text):
 def extract_years_experience(text):
     normalized = normalize_text(text)
 
-    patterns = [
+    year_patterns = [
+        # 3 years of experience
+        # 3+ years of experience
         r"(\d+(?:\.\d+)?)\+?\s+years?\s+of\s+experience",
-        r"(\d+(?:\.\d+)?)\+?\s+years?\s+experience",
+
+        # 1 year of project experience
+        # 2 years of professional experience
+        # 3 years of relevant work experience
+        r"(\d+(?:\.\d+)?)\+?\s+years?\s+of\s+(?:relevant\s+|professional\s+|project\s+|work\s+|industry\s+|hands[- ]on\s+|practical\s+)*experience",
+
+        # 2 years professional experience
+        # 1 year project experience
+        r"(\d+(?:\.\d+)?)\+?\s+years?\s+(?:relevant\s+|professional\s+|project\s+|work\s+|industry\s+|hands[- ]on\s+|practical\s+)*experience",
+
+        # Experience: 3 years
         r"experience\s*[:\-]?\s*(\d+(?:\.\d+)?)\+?\s+years?",
+    ]
+
+    month_patterns = [
+        # 6 months experience
+        # 18 months of work experience
+        r"(\d+(?:\.\d+)?)\s+months?\s+(?:of\s+)?(?:relevant\s+|professional\s+|project\s+|work\s+|industry\s+|hands[- ]on\s+|practical\s+)*experience",
     ]
 
     values = []
 
-    for pattern in patterns:
+    for pattern in year_patterns:
         matches = re.findall(pattern, normalized)
 
         for match in matches:
             try:
                 values.append(float(match))
-            except ValueError:
+            except (TypeError, ValueError):
                 continue
 
-    return max(values) if values else 0.0
+    for pattern in month_patterns:
+        matches = re.findall(pattern, normalized)
+
+        for match in matches:
+            try:
+                months = float(match)
+                values.append(months / 12.0)
+            except (TypeError, ValueError):
+                continue
+
+    return round(max(values), 2) if values else 0.0
 
 
 def extract_education_signals(text):
