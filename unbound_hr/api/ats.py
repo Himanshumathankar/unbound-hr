@@ -198,6 +198,40 @@ def get_applicants(
     }
 
 
+def _hrms_status_for_ats_stage(stage):
+    """
+    Map detailed Unbound ATS stages to the closest native
+    HRMS Job Applicant status.
+    """
+
+    mapping = {
+        "New Applicant": "Open",
+        "Processing": "Open",
+        "Screening": "Open",
+        "HR Review": "Open",
+
+        "Shortlisted": "Shortlisted",
+        "Selection Mail Sent": "Shortlisted",
+        "Interview Scheduled": "Shortlisted",
+        "Interview Round 1": "Shortlisted",
+        "Interview Round 2": "Shortlisted",
+        "Final Review": "Shortlisted",
+
+        "Selected": "Accepted",
+        "Offer Sent": "Accepted",
+        "Joined": "Accepted",
+
+        "Rejected": "Rejected",
+        "Withdrawn": "Rejected",
+        "Not Interested": "Rejected",
+        "Offer Declined": "Rejected",
+
+        "On Hold": "Hold",
+    }
+
+    return mapping.get(stage)
+
+
 @frappe.whitelist()
 def bulk_update_stage(applicants, stage):
     _ensure_hr_access()
@@ -248,6 +282,11 @@ def bulk_update_stage(applicants, stage):
         values = {
             "custom_ats_stage": stage,
         }
+
+        hrms_status = _hrms_status_for_ats_stage(stage)
+
+        if hrms_status:
+            values["status"] = hrms_status
 
         if stage == "Shortlisted":
             values["custom_shortlisted_on"] = now_datetime()
@@ -396,6 +435,7 @@ def shortlist_and_send_email(applicants):
                 applicant.name,
                 {
                     "custom_ats_stage": "Shortlisted",
+                    "status": "Shortlisted",
                     "custom_shortlisted_on": now_datetime(),
                 },
                 update_modified=True,

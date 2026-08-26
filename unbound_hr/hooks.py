@@ -282,3 +282,7 @@ website_route_rules = [
         "to_route": "apply",
     }
 ]
+
+doctype_list_js = {
+    "Job Applicant": "public/js/job_applicant_list.js",
+}
