@@ -286,3 +286,7 @@ website_route_rules = [
 doctype_list_js = {
     "Job Applicant": "public/js/job_applicant_list.js",
 }
+
+doctype_js = {
+    "Job Applicant": "public/js/job_applicant.js",
+}
