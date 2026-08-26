@@ -15,13 +15,9 @@ class UnboundATS {
         this.selected = new Set();
         this.applicants = [];
 
-        this.make_filters();
-
-        // Frappe keeps custom page fields inside the page form area.
-        // Explicitly show it so ATS filters are visible.
-        this.page.show_form();
-
         this.make_layout();
+        this.make_filters();
+        this.make_filter_controls();
         this.make_actions();
 
         this.load_job_openings();
