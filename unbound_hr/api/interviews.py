@@ -190,6 +190,113 @@ def get_interview_plan(applicant_name):
     }
 
 
+# Temporary testing fallback.
+# In production each interviewer will resolve to their own
+# User Appointment Availability -> Google Calendar record.
+TEST_GOOGLE_CALENDAR = "Himanshu Test Calendar"
+
+
+def _get_google_calendar_for_interviewer(interviewer):
+    """
+    Resolve the interviewer's Google Calendar.
+
+    Production:
+        User Appointment Availability -> google_calendar
+
+    Test fallback:
+        Himanshu Test Calendar
+    """
+
+    calendar = frappe.db.get_value(
+        "User Appointment Availability",
+        {
+            "user": interviewer,
+        },
+        "google_calendar",
+    )
+
+    if calendar:
+        return calendar
+
+    if frappe.db.exists(
+        "Google Calendar",
+        TEST_GOOGLE_CALENDAR,
+    ):
+        return TEST_GOOGLE_CALENDAR
+
+    return None
+
+
+def _get_google_calendar_conflicts(
+    interviewer,
+    scheduled_on,
+    from_time,
+    to_time,
+):
+    """
+    Check synced Google Calendar Events overlapping the
+    requested interview slot.
+    """
+
+    calendar = _get_google_calendar_for_interviewer(
+        interviewer
+    )
+
+    if not calendar:
+        return []
+
+    from datetime import datetime
+
+    date_string = str(scheduled_on)
+
+    requested_start = datetime.fromisoformat(
+        f"{date_string} {from_time}"
+    )
+
+    requested_end = datetime.fromisoformat(
+        f"{date_string} {to_time}"
+    )
+
+    rows = frappe.get_all(
+        "Event",
+        filters={
+            "google_calendar": calendar,
+            "starts_on": ["<", requested_end],
+            "ends_on": [">", requested_start],
+        },
+        fields=[
+            "name",
+            "subject",
+            "starts_on",
+            "ends_on",
+            "google_calendar",
+            "google_calendar_event_id",
+            "google_meet_link",
+        ],
+        order_by="starts_on asc",
+        limit_page_length=100,
+    )
+
+    conflicts = []
+
+    for row in rows:
+        conflicts.append(
+            {
+                "source": "Google Calendar",
+                "interviewer": interviewer,
+                "calendar": calendar,
+                "event": row.name,
+                "subject": row.subject,
+                "starts_on": row.starts_on,
+                "ends_on": row.ends_on,
+                "google_calendar_event_id":
+                    row.google_calendar_event_id,
+            }
+        )
+
+    return conflicts
+
+
 @frappe.whitelist()
 def check_interviewer_availability(
     scheduled_on,
@@ -215,6 +322,19 @@ def check_interviewer_availability(
     conflicts = []
 
     for interviewer in interviewers:
+        google_conflicts = (
+            _get_google_calendar_conflicts(
+                interviewer=interviewer,
+                scheduled_on=scheduled_on,
+                from_time=from_time,
+                to_time=to_time,
+            )
+        )
+
+        conflicts.extend(
+            google_conflicts
+        )
+
         child_rows = frappe.get_all(
             "Interview Detail",
             filters={
