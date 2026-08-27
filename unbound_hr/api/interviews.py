@@ -470,10 +470,29 @@ def sync_interview_event_to_google(
             [
                 "google_calendar_event_id",
                 "google_meet_link",
+                "custom_meet_link",
                 "custom_google_calendar_event_url",
             ],
             as_dict=True,
         ) or {}
+
+        # frappe_appointment stores the generated Google Meet URL
+        # in custom_meet_link. Native Frappe may use google_meet_link.
+        # Support both so Interview always receives the Meet URL.
+        meet_link = (
+            google_data.get("google_meet_link")
+            or google_data.get("custom_meet_link")
+        )
+
+        # Keep the standard Event field populated as well.
+        if meet_link and not google_data.get("google_meet_link"):
+            frappe.db.set_value(
+                "Event",
+                event.name,
+                "google_meet_link",
+                meet_link,
+                update_modified=False,
+            )
 
         interview_name = frappe.db.get_value(
             "Interview",
@@ -490,9 +509,7 @@ def sync_interview_event_to_google(
                 {
                     "custom_calendar_sync_status": "Synced",
                     "custom_google_meet_link":
-                        google_data.get(
-                            "google_meet_link"
-                        ),
+                        meet_link,
                     "custom_google_calendar_event_url":
                         google_data.get(
                             "custom_google_calendar_event_url"
@@ -509,9 +526,7 @@ def sync_interview_event_to_google(
                     "google_calendar_event_id"
                 ),
             "google_meet_link":
-                google_data.get(
-                    "google_meet_link"
-                ),
+                meet_link,
             "google_calendar_event_url":
                 google_data.get(
                     "custom_google_calendar_event_url"
