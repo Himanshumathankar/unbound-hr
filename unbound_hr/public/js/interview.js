@@ -1,11 +1,10 @@
 frappe.ui.form.on("Interview", {
     refresh(frm) {
-        render_unbound_interview_panel(frm);
+        render_interview_resources(frm);
     },
 });
 
-
-function render_unbound_interview_panel(frm) {
+function render_interview_resources(frm) {
     const resume = frm.doc.resume_link || "";
     const meet = frm.doc.custom_google_meet_link || "";
     const calendarUrl =
@@ -15,27 +14,33 @@ function render_unbound_interview_panel(frm) {
     const syncStatus =
         frm.doc.custom_calendar_sync_status || "Not Synced";
 
-    const colors = {
+    const field =
+        frm.get_field("custom_interview_resources_html");
+
+    if (!field) {
+        return;
+    }
+
+    const statusClass = {
         Synced: "green",
         Queued: "orange",
         Failed: "red",
         "Not Synced": "gray",
-    };
-
-    const indicatorColor =
-        colors[syncStatus] || "gray";
+    }[syncStatus] || "gray";
 
     const html = `
         <div style="
-            border: 1px solid var(--border-color);
-            border-radius: 12px;
-            padding: 18px;
-            margin-top: 8px;
+            width:100%;
+            border:1px solid var(--border-color);
+            border-radius:12px;
+            padding:18px;
+            margin:10px 0 18px;
         ">
             <div style="
                 display:flex;
-                align-items:center;
                 justify-content:space-between;
+                align-items:center;
+                gap:12px;
                 margin-bottom:16px;
             ">
                 <div>
@@ -46,174 +51,102 @@ function render_unbound_interview_panel(frm) {
                         ${__("Interview Resources")}
                     </div>
 
-                    <div class="text-muted"
-                         style="margin-top:2px;">
-                        ${__("Resume, meeting and calendar details")}
+                    <div class="text-muted">
+                        ${__("Resume, Google Meet and calendar")}
                     </div>
                 </div>
 
-                <span class="indicator-pill ${indicatorColor}">
+                <span class="indicator-pill ${statusClass}">
                     ${frappe.utils.escape_html(syncStatus)}
                 </span>
             </div>
 
             <div style="
-                display:grid;
-                grid-template-columns:
-                    repeat(auto-fit, minmax(220px, 1fr));
-                gap:12px;
+                display:flex;
+                gap:10px;
+                flex-wrap:wrap;
             ">
+                ${
+                    resume
+                        ? `
+                            <button
+                                class="btn btn-default btn-sm"
+                                data-view-resume
+                            >
+                                ${__("View Resume")}
+                            </button>
+                        `
+                        : ""
+                }
 
-                <div style="
-                    border:1px solid var(--border-color);
-                    border-radius:10px;
-                    padding:14px;
-                ">
-                    <div class="text-muted">
-                        ${__("Candidate Resume")}
-                    </div>
+                ${
+                    meet
+                        ? `
+                            <button
+                                class="btn btn-primary btn-sm"
+                                data-join-meet
+                            >
+                                ${__("Join Google Meet")}
+                            </button>
+                        `
+                        : `
+                            <span class="text-muted">
+                                ${__("Meet link not available")}
+                            </span>
+                        `
+                }
 
-                    <div style="margin-top:10px;">
-                        ${
-                            resume
-                                ? `
-                                    <button
-                                        class="btn btn-default btn-sm"
-                                        data-view-resume
-                                    >
-                                        ${__("View Resume")}
-                                    </button>
-                                `
-                                : `
-                                    <span class="text-muted">
-                                        ${__("No resume attached")}
-                                    </span>
-                                `
-                        }
-                    </div>
-                </div>
+                ${
+                    calendarUrl
+                        ? `
+                            <button
+                                class="btn btn-default btn-sm"
+                                data-open-calendar
+                            >
+                                ${__("Open Google Calendar")}
+                            </button>
+                        `
+                        : ""
+                }
 
-                <div style="
-                    border:1px solid var(--border-color);
-                    border-radius:10px;
-                    padding:14px;
-                ">
-                    <div class="text-muted">
-                        ${__("Google Meet")}
-                    </div>
-
-                    <div style="margin-top:10px;">
-                        ${
-                            meet
-                                ? `
-                                    <button
-                                        class="btn btn-primary btn-sm"
-                                        data-join-meet
-                                    >
-                                        ${__("Join Google Meet")}
-                                    </button>
-                                `
-                                : `
-                                    <span class="text-muted">
-                                        ${
-                                            syncStatus === "Queued"
-                                                ? __("Meet link is being generated...")
-                                                : __("No Meet link available")
-                                        }
-                                    </span>
-                                `
-                        }
-                    </div>
-                </div>
-
-                <div style="
-                    border:1px solid var(--border-color);
-                    border-radius:10px;
-                    padding:14px;
-                ">
-                    <div class="text-muted">
-                        ${__("Google Calendar")}
-                    </div>
-
-                    <div style="
-                        margin-top:10px;
-                        display:flex;
-                        gap:8px;
-                        flex-wrap:wrap;
-                    ">
-                        ${
-                            calendarUrl
-                                ? `
-                                    <button
-                                        class="btn btn-default btn-sm"
-                                        data-open-google-calendar
-                                    >
-                                        ${__("Open Calendar Event")}
-                                    </button>
-                                `
-                                : ""
-                        }
-
-                        ${
-                            eventName
-                                ? `
-                                    <button
-                                        class="btn btn-default btn-sm"
-                                        data-open-frappe-event
-                                    >
-                                        ${__("View Event")}
-                                    </button>
-                                `
-                                : ""
-                        }
-
-                        ${
-                            !calendarUrl && !eventName
-                                ? `
-                                    <span class="text-muted">
-                                        ${__("No calendar event available")}
-                                    </span>
-                                `
-                                : ""
-                        }
-                    </div>
-                </div>
-
+                ${
+                    eventName
+                        ? `
+                            <button
+                                class="btn btn-default btn-sm"
+                                data-open-event
+                            >
+                                ${__("View Frappe Event")}
+                            </button>
+                        `
+                        : ""
+                }
             </div>
         </div>
     `;
 
-    const field =
-        frm.get_field("custom_interview_resources_html");
+    field.$wrapper.html(html);
 
-    if (!field) {
-        return;
-    }
-
-    const wrapper = field.$wrapper;
-
-    wrapper.html(html);
-
-    wrapper
+    field.$wrapper
         .find("[data-view-resume]")
         .on("click", () => {
             window.open(resume, "_blank");
         });
 
-    wrapper
+    field.$wrapper
         .find("[data-join-meet]")
         .on("click", () => {
             window.open(meet, "_blank");
         });
 
-    wrapper
-        .find("[data-open-google-calendar]")
+    field.$wrapper
+        .find("[data-open-calendar]")
         .on("click", () => {
             window.open(calendarUrl, "_blank");
         });
 
-    wrapper
-        .find("[data-open-frappe-event]")
+    field.$wrapper
+        .find("[data-open-event]")
         .on("click", () => {
             frappe.set_route(
                 "Form",
