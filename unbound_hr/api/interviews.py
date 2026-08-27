@@ -399,6 +399,189 @@ def check_interviewer_availability(
     }
 
 
+def _create_google_event_for_interview(
+    interview,
+    applicant,
+    interviewers,
+):
+    """
+    Create one Frappe Event.
+
+    Frappe's Event after_insert hook pushes the Event to
+    Google Calendar, creates Google Meet and sends attendee
+    invitations.
+    """
+
+    if not interviewers:
+        return None
+
+    # For production this resolves the interviewer's own calendar.
+    # During testing it falls back to Himanshu Test Calendar.
+    google_calendar = _get_google_calendar_for_interviewer(
+        interviewers[0]
+    )
+
+    if not google_calendar:
+        frappe.throw(
+            _("No Google Calendar is configured for the interviewer.")
+        )
+
+    calendar_doc = frappe.get_doc(
+        "Google Calendar",
+        google_calendar,
+    )
+
+    if not calendar_doc.enable:
+        frappe.throw(
+            _("Google Calendar {0} is disabled.").format(
+                google_calendar
+            )
+        )
+
+    if not calendar_doc.push_to_google_calendar:
+        frappe.throw(
+            _(
+                "Push to Google Calendar is disabled for {0}."
+            ).format(
+                google_calendar
+            )
+        )
+
+    if not calendar_doc.google_calendar_id:
+        frappe.throw(
+            _(
+                "Google Calendar {0} is not fully authorized."
+            ).format(
+                google_calendar
+            )
+        )
+
+    from frappe.utils import get_datetime
+
+    starts_on = get_datetime(
+        f"{interview.scheduled_on} {interview.from_time}"
+    )
+
+    ends_on = get_datetime(
+        f"{interview.scheduled_on} {interview.to_time}"
+    )
+
+    candidate_name = (
+        applicant.applicant_name
+        or applicant.name
+    )
+
+    opening_title = interview.job_opening
+
+    if interview.job_opening:
+        opening_title = (
+            frappe.db.get_value(
+                "Job Opening",
+                interview.job_opening,
+                "job_title",
+            )
+            or interview.job_opening
+        )
+
+    event = frappe.new_doc("Event")
+
+    event.subject = _(
+        "Interview - {0} - {1}"
+    ).format(
+        candidate_name,
+        opening_title,
+    )
+
+    event.event_type = "Private"
+    event.starts_on = starts_on
+    event.ends_on = ends_on
+
+    event.description = _(
+        """
+        Interview: {0}<br>
+        Candidate: {1}<br>
+        Position: {2}<br>
+        Interview Type: {3}
+        """
+    ).format(
+        interview.name,
+        candidate_name,
+        opening_title,
+        interview.interview_type,
+    )
+
+    event.sync_with_google_calendar = 1
+    event.google_calendar = google_calendar
+    event.google_calendar_id = (
+        calendar_doc.google_calendar_id
+    )
+
+    # Native Frappe Google Calendar integration uses this field
+    # to request a Google Meet conference during Event insert.
+    event.add_video_conferencing = 1
+
+    # Keep Appointment integration metadata consistent too.
+    if event.meta.has_field(
+        "custom_meeting_provider"
+    ):
+        event.custom_meeting_provider = "Google Meet"
+
+    candidate_email = getattr(
+        applicant,
+        "email_id",
+        None,
+    )
+
+    if candidate_email:
+        event.append(
+            "event_participants",
+            {
+                "reference_doctype": "Job Applicant",
+                "reference_docname": applicant.name,
+                "email": candidate_email,
+            },
+        )
+
+    calendar_owner = calendar_doc.user
+
+    for interviewer in interviewers:
+        # If this is the interviewer's own Google Calendar,
+        # Google already treats them as the event organizer.
+        # Do not add the owner again as an attendee.
+        if interviewer == calendar_owner:
+            continue
+
+        event.append(
+            "event_participants",
+            {
+                "reference_doctype": "User",
+                "reference_docname": interviewer,
+                "email": interviewer,
+            },
+        )
+
+    event.insert(ignore_permissions=True)
+
+    # after_insert Google sync writes these fields directly
+    # to the Event row, so reload before returning them.
+    event.reload()
+
+    return {
+        "event": event.name,
+        "google_calendar": google_calendar,
+        "google_calendar_event_id":
+            event.google_calendar_event_id,
+        "google_meet_link":
+            event.google_meet_link,
+        "google_calendar_event_url":
+            getattr(
+                event,
+                "custom_google_calendar_event_url",
+                None,
+            ),
+    }
+
+
 @frappe.whitelist()
 def schedule_interview(
     applicant_name,
@@ -548,6 +731,12 @@ def schedule_interview(
 
     interview.insert()
 
+    calendar_result = _create_google_event_for_interview(
+        interview=interview,
+        applicant=applicant,
+        interviewers=interviewers,
+    )
+
     frappe.db.set_value(
         "Job Applicant",
         applicant.name,
@@ -568,5 +757,40 @@ def schedule_interview(
         "from_time": interview.from_time,
         "to_time": interview.to_time,
         "interviewers": interviewers,
-        "calendar_sync": "Pending",
+        "calendar_sync": (
+            "Completed"
+            if calendar_result
+            else "Not Configured"
+        ),
+        "event": (
+            calendar_result.get("event")
+            if calendar_result
+            else None
+        ),
+        "google_calendar": (
+            calendar_result.get("google_calendar")
+            if calendar_result
+            else None
+        ),
+        "google_calendar_event_id": (
+            calendar_result.get(
+                "google_calendar_event_id"
+            )
+            if calendar_result
+            else None
+        ),
+        "google_meet_link": (
+            calendar_result.get(
+                "google_meet_link"
+            )
+            if calendar_result
+            else None
+        ),
+        "google_calendar_event_url": (
+            calendar_result.get(
+                "google_calendar_event_url"
+            )
+            if calendar_result
+            else None
+        ),
     }
