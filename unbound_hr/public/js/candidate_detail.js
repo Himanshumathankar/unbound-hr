@@ -1,3 +1,111 @@
+function render_interview_conflicts(dialog, conflicts) {
+    const rows = (conflicts || [])
+        .map((item) => {
+            const source =
+                item.source ||
+                (item.name ? "HRMS Interview" : "Calendar");
+
+            const title =
+                item.subject ||
+                item.interview_type ||
+                item.name ||
+                __("Busy");
+
+            const start =
+                item.starts_on ||
+                item.from_time ||
+                "";
+
+            const end =
+                item.ends_on ||
+                item.to_time ||
+                "";
+
+            const sourceLabel =
+                source === "Google Calendar"
+                    ? __("Google Calendar")
+                    : __("HRMS Interview");
+
+            return `
+                <div style="
+                    padding: 10px 0;
+                    border-bottom: 1px solid var(--border-color);
+                ">
+                    <div>
+                        <strong>
+                            ${frappe.utils.escape_html(
+                                title
+                            )}
+                        </strong>
+                    </div>
+
+                    <div class="text-muted"
+                         style="margin-top: 2px;">
+                        ${frappe.utils.escape_html(
+                            sourceLabel
+                        )}
+                    </div>
+
+                    ${
+                        item.interviewer
+                            ? `
+                                <div style="margin-top:4px;">
+                                    ${__("Interviewer")}:
+                                    ${frappe.utils.escape_html(
+                                        item.interviewer
+                                    )}
+                                </div>
+                            `
+                            : ""
+                    }
+
+                    ${
+                        item.calendar
+                            ? `
+                                <div>
+                                    ${__("Calendar")}:
+                                    ${frappe.utils.escape_html(
+                                        item.calendar
+                                    )}
+                                </div>
+                            `
+                            : ""
+                    }
+
+                    <div style="margin-top:4px;">
+                        ${frappe.utils.escape_html(
+                            String(start)
+                        )}
+                        →
+                        ${frappe.utils.escape_html(
+                            String(end)
+                        )}
+                    </div>
+                </div>
+            `;
+        })
+        .join("");
+
+    dialog
+        .get_field("availability_result")
+        .$wrapper.html(`
+            <div class="alert alert-warning">
+                <div style="font-weight:600;">
+                    ${__("Selected time is unavailable")}
+                </div>
+
+                <div style="margin-top:6px;">
+                    ${__(
+                        "Change the date or time above and try again."
+                    )}
+                </div>
+
+                <div style="margin-top:10px;">
+                    ${rows}
+                </div>
+            </div>
+        `);
+}
 window.UnboundCandidateDetail = {
     async show(applicantName, atsPage) {
         const response = await frappe.call({
@@ -355,46 +463,10 @@ window.UnboundCandidateDetail = {
                                     check.message || {};
 
                                 if (!availability.available) {
-                                    const conflicts =
-                                        availability.conflicts || [];
-
-                                    const rows = conflicts
-                                        .map((item) => {
-                                            return `
-                                                <div style="margin-bottom: 8px;">
-                                                    <strong>
-                                                        ${frappe.utils.escape_html(
-                                                            item.interviewer || ""
-                                                        )}
-                                                    </strong><br>
-                                                    ${frappe.utils.escape_html(
-                                                        item.name || ""
-                                                    )}
-                                                    —
-                                                    ${frappe.utils.escape_html(
-                                                        String(item.from_time || "")
-                                                    )}
-                                                    to
-                                                    ${frappe.utils.escape_html(
-                                                        String(item.to_time || "")
-                                                    )}
-                                                </div>
-                                            `;
-                                        })
-                                        .join("");
-
-                                    scheduleDialog
-                                        .get_field("availability_result")
-                                        .$wrapper.html(`
-                                            <div class="alert alert-warning">
-                                                <strong>
-                                                    ${__("Interviewer conflict found")}
-                                                </strong>
-                                                <div style="margin-top: 8px;">
-                                                    ${rows}
-                                                </div>
-                                            </div>
-                                        `);
+                                    render_interview_conflicts(
+                                        scheduleDialog,
+                                        availability.conflicts || []
+                                    );
 
                                     return;
                                 }
@@ -424,6 +496,19 @@ window.UnboundCandidateDetail = {
                                 const response =
                                     result.message || {};
 
+                                if (
+                                    response.success === false &&
+                                    response.reason ===
+                                        "calendar_conflict"
+                                ) {
+                                    render_interview_conflicts(
+                                        scheduleDialog,
+                                        response.conflicts || []
+                                    );
+
+                                    return;
+                                }
+
                                 scheduleDialog.hide();
                                 dialog.hide();
 
@@ -448,12 +533,30 @@ window.UnboundCandidateDetail = {
                             } catch (error) {
                                 console.error(error);
 
+                                const errorText =
+                                    error?.message ||
+                                    error?.exc ||
+                                    "";
+
+                                const isDeadlock =
+                                    /deadlock|concurrent conflicting|record has changed/i
+                                        .test(errorText);
+
                                 frappe.msgprint({
-                                    title: __("Interview Scheduling Failed"),
-                                    indicator: "red",
-                                    message:
-                                        error?.message ||
-                                        __("Unable to schedule interview."),
+                                    title: isDeadlock
+                                        ? __("Scheduling Conflict")
+                                        : __("Interview Scheduling Failed"),
+                                    indicator: isDeadlock
+                                        ? "orange"
+                                        : "red",
+                                    message: isDeadlock
+                                        ? __(
+                                            "Another update happened at the same time. Nothing was sent to Google Calendar. Please retry with the same or a different time."
+                                        )
+                                        : (
+                                            errorText ||
+                                            __("Unable to schedule interview.")
+                                        ),
                                 });
                             }
                         },

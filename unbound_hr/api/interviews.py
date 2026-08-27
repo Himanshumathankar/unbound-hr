@@ -399,6 +399,113 @@ def check_interviewer_availability(
     }
 
 
+def sync_interview_event_to_google(
+    event_name,
+):
+    """
+    Push an already committed Frappe Event to Google.
+
+    This deliberately runs outside the interview scheduling
+    database transaction so a DB deadlock can never leave
+    behind an orphan Google Calendar event.
+    """
+
+    if not frappe.db.exists(
+        "Event",
+        event_name,
+    ):
+        return {
+            "success": False,
+            "reason": "event_missing",
+        }
+
+    event = frappe.get_doc(
+        "Event",
+        event_name,
+    )
+
+    # Idempotency protection.
+    # Never create the same Google Event twice.
+    if event.google_calendar_event_id:
+        return {
+            "success": True,
+            "already_synced": True,
+            "event": event.name,
+            "google_calendar_event_id":
+                event.google_calendar_event_id,
+            "google_meet_link":
+                event.google_meet_link,
+        }
+
+    try:
+        from frappe_appointment.helpers.google_calendar import (
+            insert_event_in_google_calendar_override,
+        )
+
+        # Enable sync only after the DB transaction
+        # that created the Interview/Event has committed.
+        frappe.db.set_value(
+            "Event",
+            event.name,
+            "sync_with_google_calendar",
+            1,
+            update_modified=False,
+        )
+
+        event.sync_with_google_calendar = 1
+
+        google_event_id = (
+            insert_event_in_google_calendar_override(
+                event,
+                mute_message=True,
+                update_doc=True,
+            )
+        )
+
+        frappe.db.commit()
+
+        google_data = frappe.db.get_value(
+            "Event",
+            event.name,
+            [
+                "google_calendar_event_id",
+                "google_meet_link",
+                "custom_google_calendar_event_url",
+            ],
+            as_dict=True,
+        ) or {}
+
+        return {
+            "success": True,
+            "event": event.name,
+            "google_calendar_event_id":
+                google_data.get(
+                    "google_calendar_event_id"
+                ),
+            "google_meet_link":
+                google_data.get(
+                    "google_meet_link"
+                ),
+            "google_calendar_event_url":
+                google_data.get(
+                    "custom_google_calendar_event_url"
+                ),
+        }
+
+    except Exception:
+        frappe.db.rollback()
+
+        frappe.log_error(
+            title=(
+                f"Interview Google Calendar sync failed: "
+                f"{event_name}"
+            ),
+            message=frappe.get_traceback(),
+        )
+
+        raise
+
+
 def _create_google_event_for_interview(
     interview,
     applicant,
@@ -510,7 +617,11 @@ def _create_google_event_for_interview(
         interview.interview_type,
     )
 
-    event.sync_with_google_calendar = 1
+    # IMPORTANT:
+    # Do not call Google while the Interview transaction
+    # is still open. Google sync happens only after the
+    # database transaction commits successfully.
+    event.sync_with_google_calendar = 0
     event.google_calendar = google_calendar
     event.google_calendar_id = (
         calendar_doc.google_calendar_id
@@ -562,23 +673,14 @@ def _create_google_event_for_interview(
 
     event.insert(ignore_permissions=True)
 
-    # after_insert Google sync writes these fields directly
-    # to the Event row, so reload before returning them.
-    event.reload()
-
+    # Google sync is intentionally deferred until after
+    # the Interview transaction commits successfully.
     return {
         "event": event.name,
         "google_calendar": google_calendar,
-        "google_calendar_event_id":
-            event.google_calendar_event_id,
-        "google_meet_link":
-            event.google_meet_link,
-        "google_calendar_event_url":
-            getattr(
-                event,
-                "custom_google_calendar_event_url",
-                None,
-            ),
+        "google_calendar_event_id": None,
+        "google_meet_link": None,
+        "google_calendar_event_url": None,
     }
 
 
@@ -693,12 +795,14 @@ def schedule_interview(
     )
 
     if not availability["available"]:
-        frappe.throw(
-            _(
-                "One or more interviewers already have an "
-                "interview during this time."
-            )
-        )
+        return {
+            "success": False,
+            "reason": "calendar_conflict",
+            "message": _(
+                "The selected interview time is unavailable."
+            ),
+            "conflicts": availability["conflicts"],
+        }
 
     interview = frappe.new_doc("Interview")
 
@@ -749,6 +853,18 @@ def schedule_interview(
 
     frappe.db.commit()
 
+    if calendar_result and calendar_result.get("event"):
+        frappe.enqueue(
+            "unbound_hr.api.interviews.sync_interview_event_to_google",
+            queue="short",
+            event_name=calendar_result["event"],
+            enqueue_after_commit=True,
+            job_name=(
+                "unbound_hr_google_interview_sync::"
+                + calendar_result["event"]
+            ),
+        )
+
     return {
         "success": True,
         "interview": interview.name,
@@ -758,7 +874,7 @@ def schedule_interview(
         "to_time": interview.to_time,
         "interviewers": interviewers,
         "calendar_sync": (
-            "Completed"
+            "Queued"
             if calendar_result
             else "Not Configured"
         ),
