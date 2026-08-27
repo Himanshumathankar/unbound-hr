@@ -290,3 +290,8 @@ doctype_list_js = {
 doctype_js = {
     "Job Applicant": "public/js/job_applicant.js",
 }
+
+override_whitelisted_methods = {
+    "hrms.hr.doctype.job_applicant.job_applicant.schedule_interview":
+        "unbound_hr.api.hrms_overrides.schedule_interview",
+}
