@@ -965,3 +965,142 @@ def schedule_interview(
             else None
         ),
     }
+
+
+@frappe.whitelist()
+def ensure_interview_google_meet(interview_name):
+    _ensure_hr_access()
+
+    if not frappe.db.exists("Interview", interview_name):
+        frappe.throw(_("Interview does not exist."))
+
+    interview = frappe.get_doc(
+        "Interview",
+        interview_name,
+    )
+
+    applicant = frappe.get_doc(
+        "Job Applicant",
+        interview.job_applicant,
+    )
+
+    interviewers = [
+        row.interviewer
+        for row in interview.interview_details
+        if row.interviewer
+    ]
+
+    if not interviewers:
+        frappe.throw(
+            _("No interviewer is configured for this Interview.")
+        )
+
+    # If this Interview already has an Event, reuse it.
+    event_name = getattr(
+        interview,
+        "custom_calendar_event",
+        None,
+    )
+
+    if event_name and frappe.db.exists("Event", event_name):
+        event = frappe.get_doc(
+            "Event",
+            event_name,
+        )
+
+        # If Google sync is already complete, just return it.
+        if event.google_calendar_event_id:
+            google_data = frappe.db.get_value(
+                "Event",
+                event.name,
+                [
+                    "google_calendar_event_id",
+                    "google_meet_link",
+                    "custom_google_calendar_event_url",
+                ],
+                as_dict=True,
+            ) or {}
+
+            frappe.db.set_value(
+                "Interview",
+                interview.name,
+                {
+                    "custom_calendar_sync_status": "Synced",
+                    "custom_google_meet_link":
+                        google_data.get("google_meet_link"),
+                    "custom_google_calendar_event_url":
+                        google_data.get(
+                            "custom_google_calendar_event_url"
+                        ),
+                },
+                update_modified=False,
+            )
+
+            frappe.db.commit()
+
+            return {
+                "success": True,
+                "event": event.name,
+                "status": "Synced",
+                "google_meet_link":
+                    google_data.get("google_meet_link"),
+                "google_calendar_event_url":
+                    google_data.get(
+                        "custom_google_calendar_event_url"
+                    ),
+            }
+
+        frappe.db.set_value(
+            "Interview",
+            interview.name,
+            "custom_calendar_sync_status",
+            "Queued",
+            update_modified=False,
+        )
+
+        frappe.db.commit()
+
+        frappe.enqueue(
+            "unbound_hr.api.interviews.sync_interview_event_to_google",
+            queue="short",
+            event_name=event.name,
+            enqueue_after_commit=True,
+            job_name=(
+                "unbound_hr_google_interview_sync::"
+                + event.name
+            ),
+        )
+
+        return {
+            "success": True,
+            "event": event.name,
+            "status": "Queued",
+        }
+
+    # Old Interview: create its missing Event now.
+    calendar_result = _create_google_event_for_interview(
+        interview=interview,
+        applicant=applicant,
+        interviewers=interviewers,
+    )
+
+    frappe.db.commit()
+
+    event_name = calendar_result.get("event")
+
+    frappe.enqueue(
+        "unbound_hr.api.interviews.sync_interview_event_to_google",
+        queue="short",
+        event_name=event_name,
+        enqueue_after_commit=True,
+        job_name=(
+            "unbound_hr_google_interview_sync::"
+            + event_name
+        ),
+    )
+
+    return {
+        "success": True,
+        "event": event_name,
+        "status": "Queued",
+    }

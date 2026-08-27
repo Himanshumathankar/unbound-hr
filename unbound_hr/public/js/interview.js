@@ -37,27 +37,24 @@ function render_interview_resources(frm) {
 
     const html = `
         <div style="
-            width: 100%;
-            padding: 16px 0 20px;
+            padding: 12px 0 18px;
         ">
             <div style="
                 display:flex;
-                align-items:center;
                 justify-content:space-between;
-                gap:16px;
-                margin-bottom:14px;
+                align-items:center;
+                gap:12px;
+                margin-bottom:12px;
             ">
                 <div>
                     <div style="
                         font-size:15px;
                         font-weight:600;
                     ">
-                        ${__("Candidate & Meeting Resources")}
+                        ${__("Interview Resources")}
                     </div>
-
-                    <div class="text-muted"
-                         style="margin-top:2px;">
-                        ${__("Resume, interview meeting and calendar")}
+                    <div class="text-muted">
+                        ${__("Resume, Google Meet and Calendar")}
                     </div>
                 </div>
 
@@ -68,9 +65,9 @@ function render_interview_resources(frm) {
 
             <div style="
                 display:flex;
-                align-items:center;
-                gap:10px;
+                gap:8px;
                 flex-wrap:wrap;
+                align-items:center;
             ">
                 ${
                     resume
@@ -82,11 +79,7 @@ function render_interview_resources(frm) {
                             ${__("View Resume")}
                         </button>
                         `
-                        : `
-                        <span class="text-muted">
-                            ${__("No resume")}
-                        </span>
-                        `
+                        : ""
                 }
 
                 ${
@@ -100,9 +93,16 @@ function render_interview_resources(frm) {
                         </button>
                         `
                         : `
-                        <span class="text-muted">
-                            ${__("Meet link not available")}
-                        </span>
+                        <button
+                            class="btn btn-primary btn-sm"
+                            data-generate-meet
+                        >
+                            ${__(
+                                syncStatus === "Queued"
+                                    ? "Refresh Meet"
+                                    : "Generate Google Meet"
+                            )}
+                        </button>
                         `
                 }
 
@@ -113,7 +113,7 @@ function render_interview_resources(frm) {
                             class="btn btn-default btn-sm"
                             data-open-calendar
                         >
-                            ${__("Open Calendar Event")}
+                            ${__("Open Calendar")}
                         </button>
                         `
                         : ""
@@ -126,7 +126,7 @@ function render_interview_resources(frm) {
                             class="btn btn-default btn-sm"
                             data-open-event
                         >
-                            ${__("View Frappe Event")}
+                            ${__("View Event")}
                         </button>
                         `
                         : ""
@@ -163,5 +163,61 @@ function render_interview_resources(frm) {
                 "Event",
                 eventName
             );
+        });
+
+    field.$wrapper
+        .find("[data-generate-meet]")
+        .on("click", async () => {
+            try {
+                const result = await frappe.call({
+                    method:
+                        "unbound_hr.api.interviews.ensure_interview_google_meet",
+                    args: {
+                        interview_name: frm.doc.name,
+                    },
+                    freeze: true,
+                    freeze_message:
+                        __("Creating Google Meet..."),
+                });
+
+                const response =
+                    result.message || {};
+
+                if (!response.success) {
+                    frappe.throw(
+                        __("Unable to create Google Meet.")
+                    );
+                }
+
+                frappe.show_alert({
+                    message:
+                        response.status === "Synced"
+                            ? __("Google Meet ready")
+                            : __("Google Meet is being created"),
+                    indicator: "green",
+                });
+
+                await frm.reload_doc();
+
+                // Give background worker a moment and refresh again.
+                if (
+                    response.status === "Queued"
+                ) {
+                    setTimeout(
+                        () => frm.reload_doc(),
+                        2500
+                    );
+                }
+            } catch (error) {
+                console.error(error);
+
+                frappe.msgprint({
+                    title: __("Google Meet Failed"),
+                    indicator: "red",
+                    message:
+                        error?.message ||
+                        __("Unable to create Google Meet."),
+                });
+            }
         });
 }
