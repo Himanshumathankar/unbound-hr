@@ -184,7 +184,7 @@ function render_unbound_interview_panel(frm) {
     `;
 
     const field =
-        frm.get_field("custom_unbound_calendar_section");
+        frm.get_field("custom_interview_resources_html");
 
     if (!field) {
         return;
