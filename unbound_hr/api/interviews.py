@@ -475,6 +475,32 @@ def sync_interview_event_to_google(
             as_dict=True,
         ) or {}
 
+        interview_name = frappe.db.get_value(
+            "Interview",
+            {
+                "custom_calendar_event": event.name,
+            },
+            "name",
+        )
+
+        if interview_name:
+            frappe.db.set_value(
+                "Interview",
+                interview_name,
+                {
+                    "custom_calendar_sync_status": "Synced",
+                    "custom_google_meet_link":
+                        google_data.get(
+                            "google_meet_link"
+                        ),
+                    "custom_google_calendar_event_url":
+                        google_data.get(
+                            "custom_google_calendar_event_url"
+                        ),
+                },
+                update_modified=False,
+            )
+
         return {
             "success": True,
             "event": event.name,
@@ -494,6 +520,25 @@ def sync_interview_event_to_google(
 
     except Exception:
         frappe.db.rollback()
+
+        interview_name = frappe.db.get_value(
+            "Interview",
+            {
+                "custom_calendar_event": event_name,
+            },
+            "name",
+        )
+
+        if interview_name:
+            frappe.db.set_value(
+                "Interview",
+                interview_name,
+                "custom_calendar_sync_status",
+                "Failed",
+                update_modified=False,
+            )
+
+            frappe.db.commit()
 
         frappe.log_error(
             title=(
@@ -672,6 +717,16 @@ def _create_google_event_for_interview(
         )
 
     event.insert(ignore_permissions=True)
+
+    frappe.db.set_value(
+        "Interview",
+        interview.name,
+        {
+            "custom_calendar_event": event.name,
+            "custom_calendar_sync_status": "Queued",
+        },
+        update_modified=False,
+    )
 
     # Google sync is intentionally deferred until after
     # the Interview transaction commits successfully.

@@ -289,6 +289,7 @@ doctype_list_js = {
 
 doctype_js = {
     "Job Applicant": "public/js/job_applicant.js",
+    "Interview": "public/js/interview.js",
 }
 
 override_whitelisted_methods = {
