@@ -51,6 +51,62 @@ def schedule_interview(
     )
 
     if isinstance(result, dict):
-        return result.get("interview")
+        if (
+            result.get("success") is False
+            and result.get("reason") == "calendar_conflict"
+        ):
+            conflicts = result.get("conflicts") or []
+
+            details = []
+
+            for item in conflicts:
+                source = item.get("source") or "Interview"
+
+                title = (
+                    item.get("subject")
+                    or item.get("interview_type")
+                    or item.get("name")
+                    or "Busy"
+                )
+
+                start = (
+                    item.get("starts_on")
+                    or item.get("from_time")
+                    or ""
+                )
+
+                end = (
+                    item.get("ends_on")
+                    or item.get("to_time")
+                    or ""
+                )
+
+                details.append(
+                    f"<b>{frappe.utils.escape_html(str(title))}</b>"
+                    f"<br>{frappe.utils.escape_html(str(source))}"
+                    f"<br>{frappe.utils.escape_html(str(start))}"
+                    f" → {frappe.utils.escape_html(str(end))}"
+                )
+
+            conflict_html = "<br><br>".join(details)
+
+            frappe.throw(
+                _(
+                    "The selected interview time is unavailable."
+                    "<br><br>{0}"
+                    "<br><br>Please change the interview time and try again."
+                ).format(conflict_html),
+                title=_("Calendar Conflict"),
+            )
+
+        interview_name = result.get("interview")
+
+        if interview_name:
+            return interview_name
+
+        frappe.throw(
+            result.get("message")
+            or _("Unable to schedule interview.")
+        )
 
     return result
